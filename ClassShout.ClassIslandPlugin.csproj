@@ -38,6 +38,25 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      让 tools/SelfTest 能直接验证报文解析。这一段逻辑踩过坑（见 ReadRequestAsync 的注释），
+      而它跑在 ClassIsland 宿主里、没法靠"启动宿主看一眼"来回归，所以单独放行给它测。
+    -->
+    <InternalsVisibleTo Include="ClassShout.ClassIslandPlugin.SelfTest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      tools/ 下有自己的项目（报文解析自测）。它们的 obj/**/*.cs 会被本项目的默认通配
+      一起扫进来，表现是一大片"特性重复"（AssemblyInfo 生成了两遍）的编译错误 ——
+      项目在仓库根目录时，必须自己把子项目挡在外面。
+    -->
+    <Compile Remove="tools/**" />
+    <EmbeddedResource Remove="tools/**" />
+    <None Remove="tools/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="manifest.yml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

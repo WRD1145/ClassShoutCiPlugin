@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    桥接服务里那段报文解析的回归测试。
+
+    为什么单独弄一个能跑的程序，而不是"启动 ClassIsland 看一眼"：
+    这段逻辑跑在宿主进程里，而它出错的**表现**是"喊话在 ClassIsland 里不出现"——
+    既没有异常，也没有日志，只能靠抓包看出来。它踩过两次坑：
+    字符数当字节数比（中文必然卡住）、以及只认 Content-Length 不认 chunked
+    （被系统代理重新编码一次就全废）。这两种都必须有东西拦着。
+
+    刻意不引测试框架：跑一次回归要多下一个包、多一层配置，
+    而这里要的只是"断言全过就退 0"。和主仓库的 ClassShout.EndToEnd 同一套路数。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ClassShout.ClassIslandPlugin.SelfTest</AssemblyName>
+    <RootNamespace>ClassShout.ClassIslandPlugin.SelfTest</RootNamespace>
+
+    <!-- 与插件项目保持一致；命令行同样可以覆盖 -->
+    <ClassIslandPluginSdkVersion Condition="'$(ClassIslandPluginSdkVersion)' == ''">2.1.0.1</ClassIslandPluginSdkVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\ClassShout.ClassIslandPlugin.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      插件项目对 PluginSdk 排除了 runtime 资产（宿主自己带着 Core 与 Shared，
+      插件再复制一份进去会让同名的类型来自两个程序集）。但自测是**独立进程**，
+      没有宿主替它准备这些依赖，所以要自己引一份完整的 —— 少一个都会在
+      "类型加载"那一步抛 FileNotFoundException，而不是在断言处失败。
+    -->
+    <PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)" />
+  </ItemGroup>
+
+</Project>

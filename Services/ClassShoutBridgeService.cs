@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -151,7 +152,7 @@ internal sealed class ClassShoutBridgeService : IHostedService
                     return;
                 }
 
-                if (!TryParseShout(body, out var from, out var text))
+                if (!TryParseShout(body, out var from, out var text, out var isVoice))
                 {
                     await WriteResponseAsync(stream, 400, "Bad Request", token).ConfigureAwait(false);
                     return;
@@ -170,7 +171,7 @@ internal sealed class ClassShoutBridgeService : IHostedService
                 {
                     try
                     {
-                        _provider.ShowShout(from, text);
+                        _provider.ShowShout(from, text, isVoice);
                     }
                     catch (Exception ex)
                     {
@@ -214,7 +215,7 @@ internal sealed class ClassShoutBridgeService : IHostedService
     }
 
     /// <summary>
-    /// 读一个最小可用的 HTTP 请求：先读到空行为止拿头部，再按 Content-Length 读体。
+    /// 读一个最小可用的 HTTP 请求：先读到空行为止拿头部，再按声明的传输方式读体。
     ///
     /// 刻意不做完整的 HTTP 解析：这个端口只接受本机、只有我们自己的客户端会连，
     /// 实现完整协议只会引入一堆用不到的分支。
@@ -223,8 +224,10 @@ internal sealed class ClassShoutBridgeService : IHostedService
     /// Content-Length 是**字节数**，而字符串长度是**字符数** —— 喊话内容里有中文时
     /// （UTF-8 下一个汉字 3 字节），字符数远小于字节数，于是"还差多少字节"的判断永远成立，
     /// 服务端就一直在等下一段数据，客户端只会看到超时。
+    ///
+    /// internal 而不是 private：tools/SelfTest 要直接验证它（见 csproj 里的 InternalsVisibleTo）。
     /// </summary>
-    private static async Task<(string Method, string Path, string Body)?> ReadRequestAsync(
+    internal static async Task<(string Method, string Path, string Body)?> ReadRequestAsync(
         NetworkStream stream, CancellationToken token)
     {
         var buffer = new byte[8192];
@@ -265,6 +268,7 @@ internal sealed class ClassShoutBridgeService : IHostedService
         }
 
         var contentLength = 0;
+        var chunked = false;
         foreach (var line in lines.Skip(1))
         {
             var separator = line.IndexOf(':');
@@ -273,15 +277,45 @@ internal sealed class ClassShoutBridgeService : IHostedService
                 continue;
             }
 
-            if (line[..separator].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase) &&
-                int.TryParse(line[(separator + 1)..].Trim(), out var parsed) &&
+            var name = line[..separator].Trim();
+            var value = line[(separator + 1)..].Trim();
+
+            if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(value, out var parsed) &&
                 parsed >= 0)
             {
                 contentLength = parsed;
             }
+            else if (name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) &&
+                     value.Contains("chunked", StringComparison.OrdinalIgnoreCase))
+            {
+                chunked = true;
+            }
         }
 
         var bodyStart = headerEnd + 4;
+
+        // 两种传输方式都要认。
+        //
+        // Content-Length 好办，读够字节数就行。chunked 是**必须**支持的：
+        // 只要客户端不知道长度（或者中间隔了一层代理），HTTP/1.1 就会改用它。
+        // 我确实撞上过：教室端到本机插件的请求被系统代理接了一手，代理把请求体
+        // 重新编码成 chunked 发过来，而这里当时只按 Content-Length 读 ——
+        // 读到的是 0 字节，于是判成"没有 text 字段"，回一个 400。
+        // 两端都没有日志能说明为什么喊话不见了，只有抓包看得出。
+        var body = chunked
+            ? await ReadChunkedBodyAsync(received.GetBuffer(), (int)received.Length, bodyStart, stream, token)
+                .ConfigureAwait(false)
+            : await ReadFixedBodyAsync(received, bodyStart, contentLength, stream, token).ConfigureAwait(false);
+
+        return (requestLine[0], requestLine[1], body);
+    }
+
+    /// <summary>按 Content-Length 读完请求体。</summary>
+    private static async Task<string> ReadFixedBodyAsync(
+        MemoryStream received, int bodyStart, int contentLength, NetworkStream stream, CancellationToken token)
+    {
+        var buffer = new byte[8192];
         var needed = bodyStart + contentLength;
 
         while (received.Length < needed)
@@ -295,12 +329,103 @@ internal sealed class ClassShoutBridgeService : IHostedService
             received.Write(buffer, 0, read);
         }
 
+        var data = received.GetBuffer();
         var available = (int)Math.Min(contentLength, received.Length - bodyStart);
-        var body = available > 0
+
+        return available > 0
             ? Encoding.UTF8.GetString(data, bodyStart, available)
             : string.Empty;
+    }
 
-        return (requestLine[0], requestLine[1], body);
+    /// <summary>
+    /// 按 chunked 编码读完请求体。
+    ///
+    /// 解析的是最小子集：十六进制长度行 + 数据 + CRLF，直到长度为 0 的那一块；
+    /// 尾部的 trailer 直接忽略（我们的客户端不会发，而它对我们也没有意义）。
+    /// 前一块可能已经和头部一起躺在 <paramref name="initial"/> 里了，所以起点是它。
+    /// </summary>
+    private static async Task<string> ReadChunkedBodyAsync(
+        byte[] initial, int initialLength, int bodyStart, NetworkStream stream, CancellationToken token)
+    {
+        var data = new byte[initialLength];
+        Array.Copy(initial, data, initialLength);
+
+        var position = bodyStart;
+        var buffer = new byte[8192];
+        using var body = new MemoryStream();
+
+        // 把"手头不够就去网络上再要一点"收在一处，后面按行、按块读都走它。
+        async Task<bool> EnsureAsync(int count)
+        {
+            while (data.Length - position < count)
+            {
+                var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
+                if (read <= 0)
+                {
+                    return false;
+                }
+
+                var old = data.Length;
+                Array.Resize(ref data, old + read);
+                Array.Copy(buffer, 0, data, old, read);
+            }
+
+            return true;
+        }
+
+        async Task<string?> ReadLineAsync()
+        {
+            while (true)
+            {
+                for (var i = position; i + 1 < data.Length; i++)
+                {
+                    if (data[i] == (byte)'\r' && data[i + 1] == (byte)'\n')
+                    {
+                        var line = Encoding.ASCII.GetString(data, position, i - position);
+                        position = i + 2;
+                        return line;
+                    }
+                }
+
+                if (!await EnsureAsync(data.Length - position + 1).ConfigureAwait(false))
+                {
+                    return null;
+                }
+            }
+        }
+
+        while (true)
+        {
+            var line = await ReadLineAsync().ConfigureAwait(false);
+            if (line is null)
+            {
+                return string.Empty;
+            }
+
+            // 长度行可能带扩展（"1a;foo=bar"），扩展部分与数据无关
+            var sizeText = line.Split(';')[0].Trim();
+
+            if (!int.TryParse(sizeText, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var size) || size < 0)
+            {
+                return string.Empty;
+            }
+
+            if (size == 0)
+            {
+                break;
+            }
+
+            // 数据后面还跟着一个 CRLF，一并要过来
+            if (!await EnsureAsync(size + 2).ConfigureAwait(false))
+            {
+                return string.Empty;
+            }
+
+            body.Write(data, position, size);
+            position += size + 2;
+        }
+
+        return Encoding.UTF8.GetString(body.ToArray());
     }
 
     /// <summary>在字节流里找头部的结束位置（CRLFCRLF）。</summary>
@@ -318,11 +443,19 @@ internal sealed class ClassShoutBridgeService : IHostedService
         return -1;
     }
 
-    /// <summary>解析喊话体。字段名与教室端发出来的一致。</summary>
-    private static bool TryParseShout(string body, out string from, out string text)
+    /// <summary>
+    /// 解析喊话体。字段名与教室端发出来的一致。
+    ///
+    /// <c>kind</c> 是可选的：老版本的教室端不发这个字段，那就当成文字喊话，
+    /// 遮罩上写「喊话」—— 和加这个字段之前的表现完全一样。
+    ///
+    /// internal 而不是 private：原因同 <see cref="ReadRequestAsync"/>。
+    /// </summary>
+    internal static bool TryParseShout(string body, out string from, out string text, out bool isVoice)
     {
         from = string.Empty;
         text = string.Empty;
+        isVoice = false;
 
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -342,6 +475,14 @@ internal sealed class ClassShoutBridgeService : IHostedService
         if (root.TryGetProperty("from", out var fromElement))
         {
             from = fromElement.GetString()?.Trim() ?? string.Empty;
+        }
+
+        // 语音喊话有两种：还没转写出结果的（voice），和有识别结果的（voiceTranscript）。
+        // 对这里来说它们一样 —— 都是语音，正文都由教室端写好，插件原样显示。
+        if (root.TryGetProperty("kind", out var kindElement) &&
+            kindElement.ValueKind == JsonValueKind.String)
+        {
+            isVoice = kindElement.GetString() is "voice" or "voiceTranscript";
         }
 
         return text.Length > 0;

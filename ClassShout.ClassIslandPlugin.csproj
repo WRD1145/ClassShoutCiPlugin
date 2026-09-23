@@ -15,7 +15,20 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ClassShout.ClassIslandPlugin</RootNamespace>
     <AssemblyName>ClassShout.ClassIslandPlugin</AssemblyName>
-    <ClassIslandPluginSdkVersion>2.1.1.1</ClassIslandPluginSdkVersion>
+
+    <!--
+      要针对哪个 ClassIsland 版本编译。可在命令行覆盖：
+
+          dotnet build -c Release -p:ClassIslandPluginSdkVersion=2.1.1.1
+
+      默认取 2.1.0.1：它的 apiVersion 是两者中更低的那个，装得进 2.1.0.1 与 2.1.1.1 两种宿主，
+      所以发行版用它。要为更高的宿主单独出一份时再加 -p 覆盖。
+
+      为什么同一个插件要出两份：ClassIsland 2.1.0.1 与 2.1.1.1 之间引入了破坏性变更
+      （与本插件用到的 API 无关，但程序集版本变了），针对一个版本编译出来的插件
+      装到另一个版本上不保证能加载。两份分别对应各自的宿主。
+    -->
+    <ClassIslandPluginSdkVersion Condition="'$(ClassIslandPluginSdkVersion)' == ''">2.1.0.1</ClassIslandPluginSdkVersion>
   </PropertyGroup>
 
   <ItemGroup>

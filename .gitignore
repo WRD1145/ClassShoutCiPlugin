@@ -1,0 +1,11 @@
+## 构建产物
+bin/
+obj/
+
+## 运行期产生的诊断日志（见 README「排障」）
+classshout-bridge.log
+
+## IDE
+.vs/
+.idea/
+*.user

@@ -1,0 +1,14 @@
+# nonk8s
+# ClassIsland 插件清单。
+#
+# apiVersion 的含义是"本插件只能在**不低于**该版本的 ClassIsland 上工作"。
+# 这里写 2.1.1.1，与编译时引用的 PluginSdk 版本一致 —— 两者必须同步，
+# 否则会出现"清单说能用、实际一调 API 就炸"的错配。
+id: classshout.bridge
+name: ClassShout 联动
+description: 把 ClassShout 教室端的喊话显示为 ClassIsland 提醒，让喊话出现在学生已经在看的那块屏上。
+entranceAssembly: "ClassShout.ClassIslandPlugin.dll"
+url: https://github.com/WRD1145/ClassShoutCiPlugin
+version: 1.0.0.0
+apiVersion: 2.1.1.1
+author: WRD1145

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ClassShout ←→ ClassIsland 联动插件。
+
+    目标框架跟宿主走：ClassIsland 2.1.1.1 已是 net10.0-windows10.0.19041.0
+    （官方模板包 2.0.0.2 里给的还是 net8.0-windows，那是旧宿主的写法）。
+
+    ClassIsland.PluginSdk 排除 runtime/native：宿主自己带着 Core 与 Shared，
+    插件再复制一份进去只会造成类型来自两个程序集实例、互相认不出来。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ClassShout.ClassIslandPlugin</RootNamespace>
+    <AssemblyName>ClassShout.ClassIslandPlugin</AssemblyName>
+    <ClassIslandPluginSdkVersion>2.1.1.1</ClassIslandPluginSdkVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)">
+      <ExcludeAssets>runtime; native</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="manifest.yml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="README.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

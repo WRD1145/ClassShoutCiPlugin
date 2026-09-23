@@ -9,3 +9,6 @@ classshout-bridge.log
 .vs/
 .idea/
 *.user
+
+## 打包产物（.cipx 与 MD5）
+cipx/

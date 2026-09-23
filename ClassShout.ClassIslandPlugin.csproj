@@ -47,6 +47,15 @@
     <None Update="icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!--
+      许可文本随包一起发出去：只落到输出目录，dotnet publish -p:CreateCipx=true 才会把它打进 .cipx。
+      这一条不是硬性门槛（打包脚本只提示、不报错），但发二进制却不附许可文本，
+      拿到包的人就无从知道它按什么条款提供。
+    -->
+    <None Update="LICENSE">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

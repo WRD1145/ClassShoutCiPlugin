@@ -69,4 +69,7 @@ curl.exe -X POST http://127.0.0.1:45902/shout -H "Content-Type: application/json
 
 ## 许可证
 
-[MIT](LICENSE)。本插件只与 ClassIsland 的公开插件 API 交互，不修改 ClassIsland 本体。
+**GNU General Public License v3.0**（[GPL-3.0](LICENSE)）。
+
+本插件只与 ClassIsland 的公开插件 API 交互，不修改 ClassIsland 本体 ——
+所以它的许可与 ClassIsland 本体的许可（LGPLv3）互不影响。

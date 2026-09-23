@@ -10,6 +10,6 @@ name: ClassShout 联动
 description: 把 ClassShout 教室端的喊话显示为 ClassIsland 提醒，让喊话出现在学生已经在看的那块屏上。
 entranceAssembly: "ClassShout.ClassIslandPlugin.dll"
 url: https://github.com/WRD1145/ClassShoutCiPlugin
-version: 1.0.0.0
+version: 1.0.1.0
 apiVersion: 2.1.0.1
 author: WRD1145

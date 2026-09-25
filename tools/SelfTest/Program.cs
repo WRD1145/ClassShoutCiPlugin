@@ -111,26 +111,27 @@ internal static class Program
     /// <summary>kind 决定遮罩上写「喊话」还是「语音消息」，老客户端不发这个字段。</summary>
     private static void AssertKindParsing()
     {
-        var cases = new (string Body, bool ExpectedVoice, string Label)[]
+        var cases = new (string Body, string ExpectedKind, string Label)[]
         {
-            ("""{"from":"张老师","text":"现在讲第三题","kind":"text"}""", false, "kind=text"),
-            ("""{"from":"张老师","text":"语音消息","kind":"voice"}""", true, "kind=voice"),
-            ("""{"from":"张老师","text":"识别结果：翻到三十七页","kind":"voiceTranscript"}""", true, "kind=voiceTranscript"),
-            ("""{"from":"张老师","text":"现在讲第三题"}""", false, "老客户端（没有 kind 字段）"),
-            ("""{"from":"张老师","text":"现在讲第三题","kind":"将来才有的值"}""", false, "不认识的 kind"),
+            ("""{"from":"张老师","text":"现在讲第三题","kind":"text"}""", "text", "kind=text"),
+            ("""{"from":"张老师","text":"语音消息","kind":"voice"}""", "voice", "kind=voice"),
+            ("""{"from":"张老师","text":"识别结果：翻到三十七页","kind":"voiceTranscript"}""", "voiceTranscript", "kind=voiceTranscript"),
+            ("""{"from":"张老师","text":"（图片）","kind":"image"}""", "image", "kind=image"),
+            ("""{"from":"张老师","text":"现在讲第三题"}""", "text", "老客户端（没有 kind 字段）"),
+            ("""{"from":"张老师","text":"现在讲第三题","kind":"将来才有的值"}""", "将来才有的值", "不认识的 kind（原样收下）"),
         };
 
-        foreach (var (body, expectedVoice, label) in cases)
+        foreach (var (body, expectedKind, label) in cases)
         {
-            var ok = ClassShoutBridgeService.TryParseShout(body, out var from, out var text, out var isVoice);
+            var ok = ClassShoutBridgeService.TryParseShout(body, out var from, out var text, out var kind);
 
             Check($"{label}：解析成功且取到内容",
                 ok && from == "张老师" && text.Length > 0,
                 ok ? $"from={from} text={Show(text)}" : "解析失败");
 
-            Check($"{label}：判成{(expectedVoice ? "语音" : "文字")}喊话",
-                isVoice == expectedVoice,
-                isVoice ? "语音" : "文字");
+            Check($"{label}：类别={(expectedKind == "将来才有的值" ? "原样保留" : expectedKind)}",
+                kind == expectedKind,
+                kind);
         }
 
         Check("没有 text 字段的请求被拒",
@@ -149,28 +150,32 @@ internal static class Program
     {
         const string transcript = "同学们把书翻到第三十七页";
 
-        var textShout = ClassShoutNotificationProvider.CreateRequest("张老师", "现在讲第三题", isVoice: false);
+        var textShout = ClassShoutNotificationProvider.CreateRequest("张老师", "现在讲第三题", ShoutKinds.Text);
         Check("文字喊话的遮罩写「张老师 喊话」",
             MaskText(textShout) == "张老师 喊话", MaskText(textShout) ?? "(没有遮罩文字)");
         Check("文字喊话的正文就是原话",
             OverlayText(textShout) == "现在讲第三题", OverlayText(textShout) ?? "(没有正文)");
 
-        var voiceShout = ClassShoutNotificationProvider.CreateRequest("张老师", "语音消息", isVoice: true);
+        var voiceShout = ClassShoutNotificationProvider.CreateRequest("张老师", "语音消息", ShoutKinds.Voice);
         Check("语音喊话的遮罩写「张老师 语音消息」",
             MaskText(voiceShout) == "张老师 语音消息", MaskText(voiceShout) ?? "(没有遮罩文字)");
         Check("没配转写时正文只有「语音消息」",
             OverlayText(voiceShout) == "语音消息", OverlayText(voiceShout) ?? "(没有正文)");
 
         var content = $"语音消息{Environment.NewLine}识别结果：{transcript}";
-        var withTranscript = ClassShoutNotificationProvider.CreateRequest("张老师", content, isVoice: true);
+        var withTranscript = ClassShoutNotificationProvider.CreateRequest("张老师", content, ShoutKinds.VoiceTranscript);
         Check("带识别结果时遮罩不变（还是「张老师 语音消息」）",
             MaskText(withTranscript) == "张老师 语音消息", MaskText(withTranscript) ?? "(没有遮罩文字)");
         Check("带识别结果时正文是两行、含识别出来的字",
             OverlayText(withTranscript) == content && OverlayText(withTranscript)!.Contains(transcript, StringComparison.Ordinal),
             Show(OverlayText(withTranscript) ?? "(无正文)"));
 
+        var imageShout = ClassShoutNotificationProvider.CreateRequest("张老师", "（图片）", ShoutKinds.Image);
+        Check("图片喊话的遮罩写「张老师 图片消息」",
+            MaskText(imageShout) == "张老师 图片消息", MaskText(imageShout) ?? "(没有遮罩文字)");
+
         // 姓名拿不到时不能显示成" 喊话"这种前面挂个空格的怪样子
-        var anonymous = ClassShoutNotificationProvider.CreateRequest(string.Empty, "语音消息", isVoice: true);
+        var anonymous = ClassShoutNotificationProvider.CreateRequest(string.Empty, "语音消息", ShoutKinds.Voice);
         Check("没有姓名时遮罩只写「语音消息」",
             MaskText(anonymous) == "语音消息", MaskText(anonymous) ?? "(没有遮罩文字)");
     }

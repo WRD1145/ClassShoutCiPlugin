@@ -152,7 +152,7 @@ internal sealed class ClassShoutBridgeService : IHostedService
                     return;
                 }
 
-                if (!TryParseShout(body, out var from, out var text, out var isVoice))
+                if (!TryParseShout(body, out var from, out var text, out var kind))
                 {
                     await WriteResponseAsync(stream, 400, "Bad Request", token).ConfigureAwait(false);
                     return;
@@ -171,7 +171,7 @@ internal sealed class ClassShoutBridgeService : IHostedService
                 {
                     try
                     {
-                        _provider.ShowShout(from, text, isVoice);
+                        _provider.ShowShout(from, text, kind);
                     }
                     catch (Exception ex)
                     {
@@ -451,11 +451,11 @@ internal sealed class ClassShoutBridgeService : IHostedService
     ///
     /// internal 而不是 private：原因同 <see cref="ReadRequestAsync"/>。
     /// </summary>
-    internal static bool TryParseShout(string body, out string from, out string text, out bool isVoice)
+    internal static bool TryParseShout(string body, out string from, out string text, out string kind)
     {
         from = string.Empty;
         text = string.Empty;
-        isVoice = false;
+        kind = ShoutKinds.Text;
 
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -477,12 +477,18 @@ internal sealed class ClassShoutBridgeService : IHostedService
             from = fromElement.GetString()?.Trim() ?? string.Empty;
         }
 
-        // 语音喊话有两种：还没转写出结果的（voice），和有识别结果的（voiceTranscript）。
-        // 对这里来说它们一样 —— 都是语音，正文都由教室端写好，插件原样显示。
+        // 类别原样收下，交给展示层决定遮罩上写什么。
+        // 认不出的值一律当文字喊话：教室端将来加了新类别而插件还没升级时，
+        // 表现只是短词不够贴切，而不是整条喊话消失。
         if (root.TryGetProperty("kind", out var kindElement) &&
             kindElement.ValueKind == JsonValueKind.String)
         {
-            isVoice = kindElement.GetString() is "voice" or "voiceTranscript";
+            var value = kindElement.GetString();
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                kind = value;
+            }
         }
 
         return text.Length > 0;

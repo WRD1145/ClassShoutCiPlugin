@@ -37,14 +37,14 @@ public class ClassShoutNotificationProvider : NotificationProviderBase
     /// 写错了不会有任何异常，只会让教室里那块屏幕上出现一句不对的话。
     /// </summary>
     /// <param name="from">喊话人。</param>
-    /// <param name="text">正文。文字喊话就是内容本身；语音喊话是"语音消息"以及识别结果。</param>
-    /// <param name="isVoice">是不是语音喊话。</param>
-    internal static NotificationRequest CreateRequest(string from, string text, bool isVoice)
+    /// <param name="text">正文。</param>
+    /// <param name="kind">喊话类别，取值见 <see cref="ShoutKinds"/>。</param>
+    internal static NotificationRequest CreateRequest(string from, string text, string kind)
     {
         // 遮罩只放一个短词：它一闪而过，塞进整句没人读得完。
-        var mask = isVoice
-            ? string.IsNullOrWhiteSpace(from) ? "语音消息" : $"{from} 语音消息"
-            : string.IsNullOrWhiteSpace(from) ? "喊话" : $"{from} 喊话";
+        var subject = ShoutKinds.MaskSubject(kind);
+
+        var mask = string.IsNullOrWhiteSpace(from) ? subject : $"{from} {subject}";
 
         return new NotificationRequest
         {
@@ -59,9 +59,9 @@ public class ClassShoutNotificationProvider : NotificationProviderBase
     /// 显示一条喊话。
     /// </summary>
     /// <param name="from">喊话人，教室端会填成老师的姓名。</param>
-    /// <param name="text">喊话内容。语音喊话时是"语音消息"以及（如果配了语音转文字）识别出的文字。</param>
-    /// <param name="isVoice">是不是语音喊话。它只影响遮罩上写「喊话」还是「语音消息」。</param>
-    public void ShowShout(string from, string text, bool isVoice)
+    /// <param name="text">喊话内容。</param>
+    /// <param name="kind">喊话类别，取值见 <see cref="ShoutKinds"/>。它只影响遮罩上那个短词。</param>
+    public void ShowShout(string from, string text, string kind)
     {
         // 后一条喊话把前一条顶掉。
         //
@@ -84,8 +84,30 @@ public class ClassShoutNotificationProvider : NotificationProviderBase
             // 已经释放掉的请求再取消，个别的实现会抛这个。喊话不该因为收尾失败而中断。
         }
 
-        var request = CreateRequest(from, text, isVoice);
+        var request = CreateRequest(from, text, kind);
         _playing = request;
         ShowNotification(request);
     }
+}
+
+/// <summary>
+/// 喊话的类别，与 ClassShout 教室端投递过来的 <c>kind</c> 字段一一对应。
+///
+/// 认不出的值一律当成文字喊话 —— 教室端将来加了新类别而插件还没升级时，
+/// 表现只是遮罩上的短词不够贴切，而不是整条喊话消失。
+/// </summary>
+internal static class ShoutKinds
+{
+    public const string Text = "text";
+    public const string Voice = "voice";
+    public const string VoiceTranscript = "voiceTranscript";
+    public const string Image = "image";
+
+    /// <summary>遮罩上那个短词：喊话一闪而过，塞进整句没人读得完。</summary>
+    public static string MaskSubject(string? kind) => kind switch
+    {
+        Voice or VoiceTranscript => "语音消息",
+        Image => "图片消息",
+        _ => "喊话",
+    };
 }

@@ -3,14 +3,19 @@
   <!--
     ClassShout ←→ ClassIsland 联动插件。
 
-    目标框架跟宿主走：ClassIsland 2.1.1.1 已是 net10.0-windows10.0.19041.0
-    （官方模板包 2.0.0.2 里给的还是 net8.0-windows，那是旧宿主的写法）。
+    目标框架**跟着宿主走**，不能自己定：ClassIsland 2.1.0.x 跑在 net8.0-windows 上，
+    2.1.1 起换成了 net10.0-windows10.0.19041.0。框架对不上的插件装进宿主里
+    加载不起来，而这件事在"安装"那一刻不会被发现 —— 表现只是"装了但没反应"。
+
+    所以下面的 ClassIslandHostTfm 按所选的 SDK 版本自动取值，也可以在命令行覆盖：
+
+        dotnet build -c Release -p:ClassIslandPluginSdkVersion=2.1.0.1     # → net8.0-windows
+        dotnet build -c Release -p:ClassIslandPluginSdkVersion=2.1.1.1     # → net10.0-windows
 
     ClassIsland.PluginSdk 排除 runtime/native：宿主自己带着 Core 与 Shared，
     插件再复制一份进去只会造成类型来自两个程序集实例、互相认不出来。
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>ClassShout.ClassIslandPlugin</RootNamespace>
@@ -29,6 +34,16 @@
       装到另一个版本上不保证能加载。两份分别对应各自的宿主。
     -->
     <ClassIslandPluginSdkVersion Condition="'$(ClassIslandPluginSdkVersion)' == ''">2.1.0.1</ClassIslandPluginSdkVersion>
+
+    <!--
+      宿主的目标框架：2.1.0.x 那一代是 net8.0-windows，2.1.1 起是 net10.0-windows。
+      （与 ClassIsland.PluginSdk 包里 lib/ 下的目录一致：2.1.0.1 是 lib/net8.0，
+      2.1.1.1 是 lib/net10.0。）
+    -->
+    <ClassIslandHostTfm Condition="'$(ClassIslandHostTfm)' == '' and $([MSBuild]::VersionLessThan('$(ClassIslandPluginSdkVersion)', '2.1.1'))">net8.0-windows</ClassIslandHostTfm>
+    <ClassIslandHostTfm Condition="'$(ClassIslandHostTfm)' == ''">net10.0-windows</ClassIslandHostTfm>
+
+    <TargetFramework>$(ClassIslandHostTfm)</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>

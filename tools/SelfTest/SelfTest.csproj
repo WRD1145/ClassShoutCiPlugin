@@ -14,7 +14,6 @@
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>ClassShout.ClassIslandPlugin.SelfTest</AssemblyName>
@@ -22,6 +21,15 @@
 
     <!-- 与插件项目保持一致；命令行同样可以覆盖 -->
     <ClassIslandPluginSdkVersion Condition="'$(ClassIslandPluginSdkVersion)' == ''">2.1.0.1</ClassIslandPluginSdkVersion>
+
+    <!--
+      目标框架也必须跟宿主走：自测跟插件项目是同一个 TFM 才能引用它，
+      而插件那边是按宿主定的（2.1.0.x → net8.0-windows，2.1.1 起 → net10.0-windows）。
+    -->
+    <ClassIslandHostTfm Condition="'$(ClassIslandHostTfm)' == '' and $([MSBuild]::VersionLessThan('$(ClassIslandPluginSdkVersion)', '2.1.1'))">net8.0-windows</ClassIslandHostTfm>
+    <ClassIslandHostTfm Condition="'$(ClassIslandHostTfm)' == ''">net10.0-windows</ClassIslandHostTfm>
+
+    <TargetFramework>$(ClassIslandHostTfm)</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>

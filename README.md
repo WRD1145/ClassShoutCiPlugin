@@ -39,10 +39,19 @@ ClassShout 教室端  ──POST http://127.0.0.1:45902/shout──▶  本插�
 
 需要 **ClassIsland 2.1.0.1 或更高**（`manifest.yml` 里的 `apiVersion` 决定的）。
 
+> **目标框架必须与宿主一致**，否则插件装进去也加载不起来（表现是"装了但没反应"）：
+> ClassIsland **2.1.0.x 跑在 `net8.0-windows`** 上，**2.1.1 起换成了 `net10.0-windows`**。
+> 本项目按所选的宿主版本自动取框架（见 csproj 里的 `ClassIslandHostTfm`），
+> 所以针对哪个版本编译就得到哪个框架的产物，不必手动改。
+
 1. 编译：
 
    ```powershell
    dotnet build -c Release
+   # 产物在 bin\Release\net8.0-windows\（默认针对 2.1.0.1）
+   #
+   # 针对 2.1.1.1 的宿主：
+   dotnet build -c Release -p:ClassIslandPluginSdkVersion=2.1.1.1
    # 产物在 bin\Release\net10.0-windows\
    ```
 
